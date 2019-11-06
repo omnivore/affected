@@ -46,7 +46,10 @@ func main() {
 
 		pkg, err := buildutil.ContainingPackage(&buildContext, cwd, f)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error finding package for file %s: %s\n", f, err)
+			if strings.Contains(f, ".go") {
+				// skip non-Go files
+				fmt.Fprintf(os.Stderr, "Error finding package for file %s: %s\n", f, err)
+			}
 			continue
 		}
 		if pkg.Goroot {
@@ -88,7 +91,6 @@ func main() {
 		for _, imp := range pkg.Imports {
 			imports[imp] = append(imports[imp], importPath)
 		}
-
 	})
 	if scanErr != nil {
 		die("Package scan incomplete, aborting")
@@ -101,7 +103,6 @@ func main() {
 	}
 	addedMore := true
 	for addedMore {
-		addedMore = false
 		var newAdditions []string
 		for _, p := range affectedPackages {
 			for _, imp := range imports[p] {
@@ -137,7 +138,7 @@ func main() {
 }
 
 func die(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args)
+	fmt.Fprintf(os.Stderr, format, args...)
 	os.Exit(1)
 }
 
@@ -171,7 +172,7 @@ func changedFiles(commitRange string) []string {
 	var res []string
 	for _, f := range files {
 		f = strings.TrimSpace(f)
-		if len(f) == 0 {
+		if f == "" {
 			continue
 		}
 		res = append(res, filepath.Join(root, f))
