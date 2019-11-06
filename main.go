@@ -46,10 +46,7 @@ func main() {
 
 		pkg, err := buildutil.ContainingPackage(&buildContext, cwd, f)
 		if err != nil {
-			if strings.Contains(f, ".go") {
-				// skip non-Go files
-				fmt.Fprintf(os.Stderr, "Error finding package for file %s: %s\n", f, err)
-			}
+			fmt.Fprintf(os.Stderr, "Error finding package for file %s: %s\n", f, err)
 			continue
 		}
 		if pkg.Goroot {
@@ -173,6 +170,10 @@ func changedFiles(commitRange string) []string {
 	for _, f := range files {
 		f = strings.TrimSpace(f)
 		if f == "" {
+			continue
+		}
+		if !strings.HasSuffix(f, ".go") {
+			// skip non-Go files
 			continue
 		}
 		res = append(res, filepath.Join(root, f))
