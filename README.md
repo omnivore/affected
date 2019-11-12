@@ -10,8 +10,8 @@ $ affected 2227ca9..HEAD
 $ affected master..2227ca9
 ```
 
-The output is a list of packages which are affected by the commits, ignoring stdlib, suitable for providing to `go test`.
+The output is a list of packages which are affected by the commits, suitable for providing to `go test`.
 
 ## Requirements
 
-`affected` requires `git` to be available in the path, and will only work on git-managed repos.
+`affected` requires `git` to be available in the path, requires the root of the repository to be a Go module, and will only work on git-managed repos.

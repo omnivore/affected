@@ -3,13 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/build"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"golang.org/x/tools/go/buildutil"
 )
 
 var ignoreDirs []string
@@ -28,110 +26,38 @@ func main() {
 
 	commitRange := args[0]
 	files := changedFiles(commitRange)
+	module := currentModule()
+	pkgsToDeps := packagePathsToDeps()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		die("Could not get CWD: %s", err)
-	}
-
-	repo := gitRoot()
-
-	pkgSeen := make(map[string]bool)
-	var modifiedPackages []*build.Package
-	buildContext := build.Default
+	editedPackages := make(map[string]bool)
 	for _, f := range files {
 		if isIgnored(f) {
 			continue
 		}
-
-		pkg, err := buildutil.ContainingPackage(&buildContext, cwd, f)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error finding package for file %s: %s\n", f, err)
-			continue
-		}
-		if pkg.Goroot {
-			fmt.Fprintf(os.Stderr, "Ignoring STDLIB file %s\n", f)
-			continue
-		}
-
-		if pkgSeen[pkg.ImportPath] {
-			continue
-		}
-
-		pkgSeen[pkg.ImportPath] = true
-		modifiedPackages = append(modifiedPackages, pkg)
+		editedPackages[filepath.Dir(filepath.Join(module, f))] = true
 	}
 
-	// TODO: list all packages in the repo, determine dependency tree and filter package list to those that transitively import affected packages
-	// build the import tree
-	var (
-		imports = make(map[string][]string)
-		scanErr error
-	)
-	buildutil.ForEachPackage(&buildContext, func(importPath string, err error) {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not read package %s: %s\n", importPath, err)
-			scanErr = err
-			return
+	affectedPackages := make(map[string]bool)
+	for pkg, deps := range pkgsToDeps {
+		// Was this package itself modified?
+		if _, ok := editedPackages[pkg]; ok {
+			affectedPackages[pkg] = true
 		}
 
-		pkg, err := buildContext.Import(importPath, repo, build.AllowBinary)
-		if err, ok := err.(*build.NoGoError); err != nil && ok {
-			return
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not import dir %s: %s\n", importPath, err)
-			scanErr = err
-			return
-		}
-
-		for _, imp := range pkg.Imports {
-			imports[imp] = append(imports[imp], importPath)
-		}
-	})
-	if scanErr != nil {
-		die("Package scan incomplete, aborting")
-	}
-
-	// filter the package list to those affected
-	var affectedPackages []string
-	for _, p := range modifiedPackages {
-		affectedPackages = append(affectedPackages, p.ImportPath)
-	}
-	addedMore := true
-	for addedMore {
-		var newAdditions []string
-		for _, p := range affectedPackages {
-			for _, imp := range imports[p] {
-				if isIgnored(imp) {
-					continue
-				}
-				var found bool
-				for _, p := range affectedPackages {
-					if imp == p {
-						found = true
-						break
-					}
-				}
-				for _, p := range newAdditions {
-					if imp == p {
-						found = true
-						break
-					}
-				}
-				if found {
-					continue
-				}
-
-				newAdditions = append(newAdditions, imp)
+		// Were any of this package's recursive dependencies modified?
+		for _, dep := range deps {
+			if _, ok := editedPackages[dep]; ok {
+				affectedPackages[pkg] = true
 			}
 		}
-
-		addedMore = len(newAdditions) > 0
-		affectedPackages = append(affectedPackages, newAdditions...)
 	}
 
-	fmt.Println(strings.Join(affectedPackages, "\n"))
+	var affectedPackageList []string
+	for pkg := range affectedPackages {
+		affectedPackageList = append(affectedPackageList, pkg)
+	}
+	sort.Strings(affectedPackageList)
+	fmt.Println(strings.Join(affectedPackageList, "\n"))
 }
 
 func die(format string, args ...interface{}) {
@@ -148,18 +74,36 @@ func isIgnored(f string) bool {
 	return false
 }
 
-func gitRoot() string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+func currentModule() string {
+	cmd := exec.Command("go", "list", "-m")
+	dat, err := cmd.Output()
+	if err != nil {
+		die("Could not run git go list -m: %v", err)
+	}
+
+	return strings.TrimSpace(string(dat))
+}
+
+func packagePathsToDeps() map[string][]string {
+	cmd := exec.Command("go", "list", "-f", "{{ .ImportPath}} {{ .Deps }}", "./...")
 	dat, err := cmd.Output()
 	if err != nil {
 		die("Could not find git root: %s", err)
 	}
-	return strings.TrimSpace(string(dat))
+
+	var result = make(map[string][]string)
+	datString := string(dat)
+	for _, pkgLine := range strings.Split(datString, "\n") {
+		stringParts := strings.SplitN(pkgLine, " ", 2)
+		importPath := stringParts[0]
+		if len(stringParts) == 2 {
+			result[importPath] = strings.Split(strings.Trim(stringParts[1], "[]"), " ")
+		}
+	}
+	return result
 }
 
 func changedFiles(commitRange string) []string {
-	root := gitRoot()
-
 	cmd := exec.Command("git", "diff", "--name-only", commitRange)
 	dat, err := cmd.Output()
 	if err != nil {
@@ -176,7 +120,7 @@ func changedFiles(commitRange string) []string {
 			// skip non-Go files
 			continue
 		}
-		res = append(res, filepath.Join(root, f))
+		res = append(res, f)
 	}
 	return res
 }
