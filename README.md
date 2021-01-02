@@ -8,7 +8,12 @@ Call `affected` with a git commit range in the form `old..new`, for example any 
 ```
 $ affected 2227ca9..HEAD
 $ affected master..2227ca9
+$ affected --ignore-dirs=.vscode --only-go=true $(git rev-parse HEAD)..
 ```
+
+Parameters
+- `--only-go=true` - Will only output go packages, `default` is false. Disable to detect changes in a monorepo with more than just Go files
+- `--ignore-dirs=.vscode,Tiltfile,docker,make` - comma separated list of paths that will be skipped if matched anywhere in the file path
 
 The output is a list of packages which are affected by the commits, suitable for providing to `go test`.
 
