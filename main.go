@@ -13,12 +13,19 @@ import (
 )
 
 var ignoreDirs []string
+var onlyGoFiles bool
 
 func main() {
 	d := flag.String("ignore-dirs", ".checkout_git", "Dir patterns (static string) to ignore, comma-separated")
 	flag.Parse()
 	if len(*d) > 0 {
 		ignoreDirs = strings.Split(*d, ",")
+	}
+
+	o := flag.String("only-go", "true", "Any value to set this flag to true")
+	flag.Parse()
+	if len(*o) > 0 {
+		onlyGoFiles = true
 	}
 
 	args := flag.Args()
@@ -140,6 +147,9 @@ func die(format string, args ...interface{}) {
 }
 
 func isIgnored(f string) bool {
+	if onlyGoFiles && !strings.HasSuffix(f, ".go") {
+		return true
+	}
 	for _, d := range ignoreDirs {
 		if strings.Contains(f, d) {
 			return true
