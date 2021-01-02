@@ -15,23 +15,22 @@ var onlyGoFiles bool
 
 func main() {
 	d := flag.String("ignore-dirs", ".checkout_git", "Dir patterns (static string) to ignore, comma-separated")
+	o := flag.String("only-go", "false", "Any value to set this flag to true")
+
 	flag.Parse()
 	if len(*d) > 0 {
 		ignoreDirs = strings.Split(*d, ",")
 	}
-
-	o := flag.String("only-go", "true", "Any value to set this flag to true")
-	flag.Parse()
-	if len(*o) > 0 {
+	if *o == "true" {
 		onlyGoFiles = true
 	}
 
+	var commitRange string
 	args := flag.Args()
-	if len(args) != 1 {
-		die("Usage: %s commit..commit\n", os.Args[0])
+	if len(args) >= 1 {
+		commitRange = args[0]
 	}
 
-	commitRange := args[0]
 	files := changedFiles(commitRange)
 	module := currentModule()
 	pkgsToDeps := packagePathsToDeps()
@@ -58,13 +57,19 @@ func main() {
 			}
 		}
 	}
-
 	var affectedPackageList []string
-	for pkg := range affectedPackages {
-		affectedPackageList = append(affectedPackageList, pkg)
+	if onlyGoFiles {
+		for pkg := range affectedPackages {
+			affectedPackageList = append(affectedPackageList, pkg)
+		}
+	} else {
+		for pkg := range editedPackages {
+			affectedPackageList = append(affectedPackageList, pkg)
+		}
 	}
 	sort.Strings(affectedPackageList)
 	fmt.Println(strings.Join(affectedPackageList, "\n"))
+
 }
 
 func die(format string, args ...interface{}) {
@@ -73,9 +78,6 @@ func die(format string, args ...interface{}) {
 }
 
 func isIgnored(f string) bool {
-	if onlyGoFiles && !strings.HasSuffix(f, ".go") {
-		return true
-	}
 	for _, d := range ignoreDirs {
 		if strings.Contains(f, d) {
 			return true
@@ -114,22 +116,38 @@ func packagePathsToDeps() map[string][]string {
 }
 
 func changedFiles(commitRange string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", commitRange)
-	dat, err := cmd.Output()
-	if err != nil {
-		die("Could not run git diff-tree: %v", err)
+	var cmd *exec.Cmd
+	var err error
+	var diffTree, localCached, local []byte
+
+	if commitRange != "" {
+		cmd = exec.Command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", commitRange)
+		diffTree, err = cmd.Output()
+		if err != nil {
+			die("Could not run git diff-tree: %v", err)
+		}
 	}
-	files := strings.Split(string(dat), "\n")
+
+	cmd = exec.Command("git", "diff", "--cached", "--name-only")
+	localCached, err = cmd.Output()
+	if err != nil {
+		die("Could not run git diff --cached --name-only: %v", err)
+	}
+	cmd = exec.Command("git", "diff", "--name-only")
+	local, err = cmd.Output()
+	if err != nil {
+		die("Could not run git diff --name-only: %v", err)
+	}
+
+	changed := string(diffTree) + string(localCached) + string(local)
+	files := strings.Split(changed, "\n")
 	var res []string
 	for _, f := range files {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
 		}
-		if !strings.HasSuffix(f, ".go") {
-			// skip non-Go files
-			continue
-		}
+
 		res = append(res, f)
 	}
 	return res
