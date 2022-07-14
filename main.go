@@ -121,7 +121,7 @@ func changedFiles(commitRange string) []string {
 	var diffTree, localCached, local []byte
 
 	if commitRange != "" {
-		cmd = exec.Command("git", "diff-tree", "--no-commit-id", "--name-only", "-r", commitRange)
+		cmd = exec.Command("git", "diff-tree", "--relative", "--no-commit-id", "--name-only", "-r", commitRange)
 		diffTree, err = cmd.Output()
 		if err != nil {
 			die("Could not run git diff-tree: %v", err)
