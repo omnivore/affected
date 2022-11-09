@@ -102,7 +102,7 @@ linters-settings:
       github.com/stretchr/testify/require: "Use suite.Require() instead of testify/require"
 
   lll:
-    line-length: 100
+    line-length: 120
     tab-width: 4
 
   nakedret:

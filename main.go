@@ -90,7 +90,7 @@ func currentModule() string {
 	cmd := exec.Command("go", "list", "-m")
 	dat, err := cmd.Output()
 	if err != nil {
-		die("Could not run git go list -m: %v", err)
+		die("Could not run git go list -m: %v", stdErrMsg(err))
 	}
 
 	return strings.TrimSpace(string(dat))
@@ -100,7 +100,7 @@ func packagePathsToDeps() map[string][]string {
 	cmd := exec.Command("go", "list", "-f", "{{ .ImportPath}} {{ .Deps }}", "./...")
 	dat, err := cmd.Output()
 	if err != nil {
-		die("Could not find git root: %s", err)
+		die("Could not find git root: %s", stdErrMsg(err))
 	}
 
 	var result = make(map[string][]string)
@@ -124,19 +124,19 @@ func changedFiles(commitRange string) []string {
 		cmd = exec.Command("git", "diff-tree", "--relative", "--no-commit-id", "--name-only", "-r", commitRange)
 		diffTree, err = cmd.Output()
 		if err != nil {
-			die("Could not run git diff-tree: %v", err)
+			die("Could not run git diff-tree: %v", stdErrMsg(err))
 		}
 	}
 
 	cmd = exec.Command("git", "diff", "--cached", "--name-only")
 	localCached, err = cmd.Output()
 	if err != nil {
-		die("Could not run git diff --cached --name-only: %v", err)
+		die("Could not run git diff --cached --name-only: %v", stdErrMsg(err))
 	}
 	cmd = exec.Command("git", "diff", "--name-only")
 	local, err = cmd.Output()
 	if err != nil {
-		die("Could not run git diff --name-only: %v", err)
+		die("Could not run git diff --name-only: %v", stdErrMsg(err))
 	}
 
 	changed := string(diffTree) + string(localCached) + string(local)
@@ -151,4 +151,11 @@ func changedFiles(commitRange string) []string {
 		res = append(res, f)
 	}
 	return res
+}
+
+func stdErrMsg(err error) string {
+	if stderr, ok := err.(*exec.ExitError); ok {
+		return strings.TrimSpace(string(stderr.Stderr))
+	}
+	return err.Error()
 }
